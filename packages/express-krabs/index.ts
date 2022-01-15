@@ -6,6 +6,7 @@ import { Config } from '../utils/config/config';
 import findTenant from '../utils/tenants/findTenant';
 import resolveRoutes from '../utils/routes/resolve';
 import { currentEnv, environmentWarningMessage } from '../utils/env';
+import { normalizeLocalePath } from '../utils/i18n/normalize-locale-path';
 
 if (!currentEnv) {
   console.warn(environmentWarningMessage);
@@ -18,14 +19,19 @@ async function krabs(
   app: any,
   config?: Config,
 ): Promise<void> {
+  // @ts-ignore
+  req.locale = null;
+
   const { tenants, enableVhostHeader } = config ?? (await getTenantConfig());
 
+  const nextConfig = await app.loadConfig();
+
   const { hostname } = req;
-  const vhostHeader = enableVhostHeader && req.headers['x-vhost'] as string;
+  const vhostHeader = enableVhostHeader && (req.headers['x-vhost'] as string);
   const host = vhostHeader || hostname;
 
   const parsedUrl = parse(req.url, true);
-  const { pathname = '/', query } = parsedUrl;
+  let { pathname = '/', query } = parsedUrl;
 
   const tenant = findTenant(tenants, host);
 
@@ -53,6 +59,15 @@ async function krabs(
     }
     return;
   }
+
+  const newPath = normalizeLocalePath(pathname as string, nextConfig.i18n.locales);
+
+  if (newPath.detectedLocale) {
+    // @ts-ignore
+    req.locale = newPath.detectedLocale;
+  }
+
+  pathname = newPath.pathname;
 
   const route = resolveRoutes(tenant.name, String(pathname));
 
